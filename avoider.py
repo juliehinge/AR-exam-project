@@ -4,7 +4,8 @@
 
 from tdmclient import ClientAsync
 import time
-from image_detection import get_direction
+from image_detection import *
+from evolutionary import *
 import numpy as np 
 
 
@@ -52,6 +53,10 @@ class AvoiderController:
         self.reload_grey = False
         self.cur_gen = None
 
+        MAX_MOTOR_SPEED_FORWARD = 700
+        MAX_MOTOR_SPEED_BACKWORD = -600
+
+
         # Set the LED lights on the robot
         def led_state(node, color):
             node.v.leds.top = color
@@ -88,10 +93,6 @@ class AvoiderController:
             else:
                 return 100, 100
 
-        def image_detection():
-
-            red_area = get_direction(np.array([0, 120, 70]), np.array([10, 255, 255]))
-
 
         # Detect which area the robot is in
         def area_detection(reflected_values, node):
@@ -112,12 +113,32 @@ class AvoiderController:
                 # 600 is the max speed for going backwords
                 return 100, 100
 
-        def run(attributes)):
+        def run(attributes):
             total_fitness = 0
             weights = attributes[0]
+            for _ in range(200):
+                hsv, image = take_picture()
+                if image is not None:    
+                    red_area, red_direction = get_image(hsv, image, np.array([0, 120, 70]), np.array([10, 255, 255]))
+                    green_area, green_direction = get_image(hsv, image, np.array([0, 100, 0]), np.array([50, 255, 50]))
+                    model = NN()
+                    weights = torch.tensor(weights, dtype=torch.float32).view(2, 7)  # Reshape to (2, 6)
 
+                    with torch.no_grad():
+                        model.fc.weight = nn.Parameter(weights)
+                    
+                    input_nodes = [red_direction, red_area, green_direction, green_area, self.in_grey_area, self.reload_grey, -1]
+                    x = torch.tensor(input_nodes, dtype=torch.float32).unsqueeze(0)
+                    
+                    # Forward pass through the model
+                    output = model(x)
 
+                    # Use the output for further processing (e.g., control the robot)
+                    left_motor_speed = output[0][0].item() * (MAX_MOTOR_SPEED_FORWARD - MAX_MOTOR_SPEED_BACKWORD) + MAX_MOTOR_SPEED_BACKWORD
+                    right_motor_speed = output[0][1].item() * (MAX_MOTOR_SPEED_FORWARD - MAX_MOTOR_SPEED_BACKWORD) + MAX_MOTOR_SPEED_BACKWORD
+                    self.speeds(left_motor_speed, right_motor_speed)
 
+                    total_fitness += fitness_function(self.speeds, self.in_grey_area, self.reload_grey, red_area, green_area)
 
 
 
@@ -195,7 +216,7 @@ class AvoiderController:
                         # get the values of the proximity sensors
                         prox_values = node.v.prox.horizontal
                         reflected_values = node.v.prox.ground.reflected
-                        red_area = image_detection()
+                        
 
                         await on_timer0()
                         await on_prox_comm()

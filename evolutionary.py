@@ -10,8 +10,8 @@ import torch.nn as nn
 
 
 class NN(nn.Module):
-    # Input: direction(red), area, direction(greem), in(grey) (boolean), -1
-    def __init__(self, input_size=5):
+    # Input: direction(red), area (red), direction(green), area (green), in(grey) (boolean), grey_reload, -1
+    def __init__(self, input_size=7):
         super(NN, self).__init__()
         # Output: left_motor_speed, right_motor_speed
         self.fc = nn.Linear(input_size, 2)
@@ -141,7 +141,7 @@ def generate_random_robots(n):
     return robots
 
 
-def fitness_function(weights, motor_speeds, in_grey_area, reload_grey, red_area, green_area):
+def fitness_function(motor_speeds, in_grey_area, reload_grey, red_area, green_area):
     ''' Normalized fitness function for the robot '''
     
     # TODO test if imbalance needs to be included
@@ -202,7 +202,7 @@ def test_generation(robots, gen_n):
             lidar_scans, _intersect_points = lidar.generate_scans(
                 robot_pose, env.get_environment())
 
-            model = RobotNN()
+            model = NN()
             weights = torch.tensor(robot.weights, dtype=torch.float32).view(2, 61)  # Reshape to (2, 61)
 
             with torch.no_grad():
