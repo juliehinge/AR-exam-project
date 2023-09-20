@@ -11,34 +11,36 @@ def get_color_area(image_path, color):
     
     return area
 
-def get_direction():
+def get_direction(lower_color, upper_color):
     
-    while camera.isOpened():
+    if camera.isOpened():
         # Capture a frame from the camera
         ret, frame = camera.read()
         if not ret:
-            break
+            return
 
         blurred_image = cv2.GaussianBlur(frame, (5, 5), 0)
         hsv = cv2.cvtColor(blurred_image, cv2.COLOR_BGR2HSV)
         
-        lower_color = np.array([30, 100, 100])
-        upper_color = np.array([62, 255, 255])
+      #  lower_color = np.array([30, 100, 100])
+      #  upper_color = np.array([62, 255, 255])
         mask = cv2.inRange(hsv, lower_color, upper_color)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for index, contour in enumerate(contours):
             area = cv2.contourArea(contour)
             if area > 1000:  # Adjust the size threshold for the detected tennis ball
+
                 #print("Detected a tennis ball above the size threshold.")
-                cv2.imwrite('detected_tennis_ball.jpg', frame)
+                cv2.imwrite('detected_color.jpg', frame)
         
-        img = cv2.imread("detected_tennis_ball.jpg")
+        img = cv2.imread("detected_color.jpg")
 
         cv2.drawContours(img, contours, -1, (255,0,127), cv2.FILLED)
         cv2.imwrite('Contours.jpg', img)
 
         height, width, _ = img.shape
+        print(height, width)
 
         column_width = width // 5
 

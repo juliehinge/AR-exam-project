@@ -4,6 +4,10 @@
 
 from tdmclient import ClientAsync
 import time
+from image_detection import get_direction
+import numpy as np 
+
+
 
 seeker_program = """
 var send_interval = 200  # time in milliseconds
@@ -44,6 +48,9 @@ class AvoiderController:
         self.is_tagged = False
         self.in_grey_area = False
         self.last_message_time = None
+        self.speeds = None, None
+        self.reload_grey = False
+        self.cur_gen = None
 
         # Set the LED lights on the robot
         def led_state(node, color):
@@ -81,19 +88,39 @@ class AvoiderController:
             else:
                 return 100, 100
 
+        def image_detection():
+
+            red_area = get_direction(np.array([0, 120, 70]), np.array([10, 255, 255]))
+
+
         # Detect which area the robot is in
         def area_detection(reflected_values, node):
             #Detect black lines
             if reflected_values[0] < 200 or reflected_values[1] < 200:
+                led_state(node, [0, 0, 32]) # Turn blue
                 return -100, -100
 
             #Detects grey area
             elif (reflected_values[0] > 200 and reflected_values[0] < 500) or (reflected_values[1] > 200 and reflected_values[1] < 500):
-                led_state(node, [0, 32, 0])
+                led_state(node, [0, 32, 0]) # Turn green
                 self.in_grey_area = True
                 return 0, 0
             else:
+                led_state(node, [0, 0, 32]) # Turn blue
+                self.in_grey_area = False
+                # 700 is the max speed
+                # 600 is the max speed for going backwords
                 return 100, 100
+
+        def run(attributes)):
+            total_fitness = 0
+            weights = attributes[0]
+
+
+
+
+
+
 
 
 
@@ -118,9 +145,15 @@ class AvoiderController:
                     # Wait for the robot's proximity sensors to be ready.
                     await node.wait_for_variables({"prox.horizontal"})
                     print("Thymio started successfully!")
+                    
+                    self.speeds = node.v.motor.left.target, node.v.motor.right.target
+
 
                     # Enable the proximity communication 
-                    node.v.prox.comm.enable = 1
+                   # node.v.prox.comm.enable = 1
+                   # node.v.prox.comm.tx = 1
+
+                    
                     # Set time interval on 200ms
                     node.v.timer.period[0] = 200
                     # Set initial LED state
@@ -131,6 +164,7 @@ class AvoiderController:
                     # away from the grey area for a minimum of 5 sec.
                     async def on_timer0():
                         if (not self.in_grey_area) and (self.last_message_time is None or time.time() - self.last_message_time >= 5):
+                            self.reload_grey = False
                             node.v.prox.comm.tx = 2
                             node.flush()
                             self.last_message_time = None #reset last message time
@@ -138,23 +172,31 @@ class AvoiderController:
                     # When Thymio receives a message "1" it is tagged, stops and turns purple
                     async def on_prox_comm():
                         message = node.v.prox.comm.rx
-                        print(f"message from Thymio: {message}")
+                       # print(f"message from Thymio: {message}")
                         if message == 1:
                             led_state(node, [32, 0, 32])    # turns purple
                             run_motor(node, 0, 0)           # stop motor
                             node.flush()
                             self.is_tagged = True      # robot is tagged and should terminate
                         elif (message == 2) and self.in_grey_area:
+                            self.reload_grey = True
                             led_state(node, [0, 0, 32])    # turns purple
                             run_motor(node, 100, 100)           # stop motor
                             node.flush()
                             self.last_message_time = time.time()
 
                     while True:
+
+                        run()
+
+
+
+
                         # get the values of the proximity sensors
                         prox_values = node.v.prox.horizontal
                         reflected_values = node.v.prox.ground.reflected
-                        
+                        red_area = image_detection()
+
                         await on_timer0()
                         await on_prox_comm()
                         """
