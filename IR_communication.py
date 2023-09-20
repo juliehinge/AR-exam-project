@@ -1,3 +1,7 @@
+
+
+# TODO correct color scheme
+
 from tdmclient import ClientAsync
 
 seeker_program = """
@@ -18,7 +22,6 @@ var send_interval = 200  # time in milliseconds
 timer.period[0] = send_interval
 call prox.comm.enable(1)
 leds.top = [0, 32, 0]
-
 timer.period[0] = send_interval
 
 onevent timer0
@@ -35,7 +38,7 @@ onevent prox.comm
 
 
 
-class ThymioController:
+class AvoiderController:
     def __init__(self):
 
         def behaviorOA(prox_values, reflected_values):
@@ -63,15 +66,20 @@ class ThymioController:
                 return 100, 100
 
 
-        def avoid_black(reflected_values):
-
-
-            print(reflected_values[0], reflected_values[1])
+        def avoid_black(reflected_values, node):
 
             if reflected_values[0] < 200 or reflected_values[1] < 200:
                 return -100, -100
+
+            elif (reflected_values[0] > 200 and reflected_values[0] < 500) or (reflected_values[1] > 200 and reflected_values[1] < 500):
+                node.v.leds.top = [0, 0, 32]
+                node.v.leds.bottom.left = [0, 0, 32]
+                node.v.leds.bottom.right = [0, 0, 32]
+
+                return 0, 0
             else:
                 return 100, 100
+
 
 
         with ClientAsync() as client:
@@ -116,7 +124,7 @@ class ThymioController:
 
                        # speeds = behaviorOA(prox_values, reflected_values)
                         
-                        speeds = avoid_black(reflected_values)
+                        speeds = avoid_black(reflected_values, node)
 
                         node.v.motor.left.target = speeds[1]
                         node.v.motor.right.target = speeds[0]
@@ -143,6 +151,6 @@ class ThymioController:
 
 if __name__ == "__main__":
 
-    # Instantiate the ThymioController class, which initializes and starts the robot's behavior.
-    ThymioController()
+    # Instantiate the AvoiderController class, which initializes and starts the robot's behavior for the avoider.
+    AvoiderController()
 
