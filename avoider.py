@@ -14,33 +14,7 @@ import cv2
 from copy import deepcopy
 import random
 
-
-seeker_program = """
-var send_interval = 200  # time in milliseconds
-var reset_delay = 100 # reset message time interval
-var signal_flag = 0
-
-timer.period[0] = send_interval
-call prox.comm.enable(1)
-
-onevent timer0
-    prox.comm.tx = 1
-    
-onevent prox.comm
-    if prox.comm.rx != 0 then
-        signal_flag = prox.comm.rx
-        timer.period[1] = reset_delay
-    end
-
-onevent timer1
-    if prox.comm.rx != 0 then
-        prox.comm.rx = 0
-        signal_flag = 0
-        timer.period[1] = 0
-    end
-"""
-
-avoider_program = """
+avoider_program_old = """
 var send_interval = 200  # time in milliseconds for sending signals
 var reset_delay = 100  # reset message time interval
 var exit_delay = 5000  # delay after leaving grey zone (5 seconds)
@@ -91,6 +65,41 @@ onevent timer1
         timer.period[1] = 0
     end
 """
+
+
+
+avoider_program = """
+var reset_delay = 100
+var ban_lifetime = 5000
+var safezone_ban = 0
+call prox.comm.enable(1)
+
+prox.comm.tx = 2
+
+onevent timer0
+    if safezone_ban == 1 then
+        safezone_ban = 0
+        prox.comm.tx = 2
+        timer.period[0] = 0
+    end
+
+onevent prox.comm
+    if prox.comm.rx == 2 then
+        if 900 < prox.ground.delta[0] and 900 < prox.ground.delta[1] then
+            safezone_ban = 1
+            prox.comm.tx = 0
+            timer.period[0] = ban_lifetime
+        end
+    end
+    if prox.comm.rx != 0 then
+        timer.period[1] = reset_delay
+    end
+
+onevent timer1
+    prox.comm.rx = 0
+    timer.period[1] = 0
+"""
+
 camera = cv2.VideoCapture(0)
 
 class AvoiderController:
@@ -104,7 +113,7 @@ class AvoiderController:
 
         self.all_weights = []
 
-        MAX_MOTOR_SPEED_FORWARD = 350
+        MAX_MOTOR_SPEED_FORWARD = 600
         MAX_MOTOR_SPEED_BACKWORD = 0
 
 
@@ -119,31 +128,38 @@ class AvoiderController:
             node.v.motor.left.target = left  
             node.v.motor.right.target = right   
         
-
-
         # Detect which area the robot is in
         def area_detection(reflected_values, node):
             #Detect black lines
             if reflected_values[0] < 200 or reflected_values[1] < 200:
                 led_state(node, [0, 0, 32]) # Turn blue
-                return -100, 100
+                return 100, -100
 
             #Detects grey area
-            elif (reflected_values[0] > 900) or (reflected_values[1] > 900):
+            elif (reflected_values[0] > 900) and (reflected_values[1] > 900):
                 led_state(node, [0, 32, 0]) # Turn green
-                time.sleep(1)
                 self.in_grey_area = True
                 return None
+            
             else:
                 led_state(node, [0, 0, 32]) # Turn blue
                 self.in_grey_area = False
                 return None
 
-        def run(attributes, node):
+        def run(attributes, node, gen_n):
+            #with open("final_weights", "w") as file:
+            #    file.write(f"GENERATION {gen_n}")
+            
+            MAX_AREA = 480*640
+            
             for i,weight in enumerate(attributes):
-                prox_values = node.v.prox.horizontal
                 
-                if (sum(prox_values) > 20000): #or self.is_tagged:
+                prox_values = node.v.prox.horizontal
+                message = node.v.prox.comm.rx
+                if message == "1":
+                    self.is_tagged = true
+                
+                if (sum(prox_values) > 20000) or self.is_tagged:
                     camera.release()
                     cv2.destroyAllWindows()
                     break
@@ -151,18 +167,19 @@ class AvoiderController:
                 weight = weight[0]
                 total_fitness = 0
                 
-                for _ in range(5):
+                for _ in range(20):
+                    
                     hsv, image = take_picture(camera)
-                    #image = None
-                    #print(image)
                     if image is not None:
                         
-                        red_area, red_direction = get_image(hsv, image, np.array([0, 120, 70]), np.array([10, 255, 255]))
+                        red_area, red_direction = get_image(hsv, image, np.array([158, 36, 210]), np.array([180, 255, 255]))
                         green_area, green_direction = get_image(hsv, image, np.array([0, 100, 0]), np.array([50, 255, 50]))
+                        red_area = red_area / MAX_AREA
+                        green_area = green_area / MAX_AREA
                         
                         model = NN(7)
                         
-                        input_weights = torch.tensor(weight, dtype=torch.float32).view(2, 7)  # Reshape to (2, 6)
+                        input_weights = torch.tensor(weight, dtype=torch.float32).view(2, 7)
 
                         with torch.no_grad():
                             model.fc.weight = nn.Parameter(input_weights)
@@ -172,6 +189,9 @@ class AvoiderController:
                             red_direction = 0
                         if green_direction is None:
                             green_direction = 0
+                            
+                        red_direction = red_direction / 5
+                        green_direction = green_direction / 5
 
                         input_nodes = [red_direction, red_area, green_direction, green_area, self.in_grey_area, self.reload_grey, -1]
 
@@ -193,19 +213,22 @@ class AvoiderController:
                         
                         node.flush()
 
-                        total_fitness += fitness_function_avoider(self.speeds, self.in_grey_area, self.reload_grey, red_area, green_area)
+                        total_fitness += fitness_function_avoider(self.speeds, self.in_grey_area, self.reload_grey, red_area, green_area) if detected_speeds is None else 0
                         
+                print(f"Total fitness: {total_fitness}")
                 tmp = (self.all_weights[i][0], total_fitness)
                 self.all_weights[i] = tmp
-
-            #release_camera(camera)
+            
+            #with open("final_weights", "w") as file:
+            #    for weight, fitness in self.all_weights:
+            #        file.write(f"Weights: {weight} Fitness: {fitness}\n")
             
 
         def generate_weights():
             
             all_weights = []
             for _ in range(10):
-                weights = [random.randint(-5, 5) for _ in range(2*(7))]
+                weights = [random.randint(0, 5) for _ in range(2*(7))]
                 all_weights.append((weights, 0))
 
             return all_weights
@@ -369,9 +392,9 @@ class AvoiderController:
                     led_state(node, [0, 0, 32])
                     node.flush() #send the initial state to Thymio
 
-                    self.all_weights = generate_weights()
-                    run(self.all_weights, node)
                     gen_n = 0
+                    self.all_weights = generate_weights()
+                    run(self.all_weights, node, gen_n)
                     MAX_GENERATIONS = 100
                     
 
@@ -388,12 +411,7 @@ class AvoiderController:
                         self.all_weights = mutated
 
 
-                        run(self.all_weights, node)
-                        
-
-                        
-                        message = node.v.prox.comm.rx
-                        print(f"message from Thymio: {message}")
+                        run(self.all_weights, node, gen_n)
 
                         """
                         Get the value of the message received from the other Thymio
@@ -401,9 +419,13 @@ class AvoiderController:
                         gets set to a new value when a message is received" 
                         """
                         prox_values = node.v.prox.horizontal
-                        if (sum(prox_values) > 20000): #or self.is_tagged:
+                        if (sum(prox_values) > 20000) or self.is_tagged:
                             camera.release()
                             cv2.destroyAllWindows()
+                            with open("final_weights_avoider.txt", "w") as file:
+                                file.write("FINAL GENERATION")
+                                for weight, fitness in self.all_weights:
+                                    file.write(f"Weights: {weight} Fitness: {fitness}\n")
                             break
 
                         node.flush()  # Send the set commands to the robot.
@@ -414,7 +436,7 @@ class AvoiderController:
                     print("Thymio stopped successfully!")
                     node.v.motor.left.target = 0
                     node.v.motor.right.target = 0
-                    node.v.leds.top = [32, 0, 0]
+                    led_state(node, [16, 0, 16])
                     node.flush()
 
             # Run the asynchronous function to control the Thymio.

@@ -16,28 +16,19 @@ import random
 
 
 seeker_program = """
-var send_interval = 200  # time in milliseconds
-var reset_delay = 100 # reset message time interval
-var signal_flag = 0
-
-timer.period[0] = send_interval
+var reset_delay = 100
 call prox.comm.enable(1)
 
-onevent timer0
-    prox.comm.tx = 1
-    
+prox.comm.tx = 1
+
 onevent prox.comm
     if prox.comm.rx != 0 then
-        signal_flag = prox.comm.rx
         timer.period[1] = reset_delay
     end
 
 onevent timer1
-    if prox.comm.rx != 0 then
-        prox.comm.rx = 0
-        signal_flag = 0
-        timer.period[1] = 0
-    end
+    prox.comm.rx = 0
+    timer.period[1] = 0
 """
 
 camera = cv2.VideoCapture(0)
@@ -53,7 +44,7 @@ class SeekerController:
 
         self.all_weights = []
 
-        MAX_MOTOR_SPEED_FORWARD = 350
+        MAX_MOTOR_SPEED_FORWARD = 450
         #MAX_MOTOR_SPEED_BACKWORD = -600
         MAX_MOTOR_SPEED_BACKWORD = 0
 
@@ -66,6 +57,7 @@ class SeekerController:
 
         # Running the Thymio robot
         def run_motor(node, left, right):
+
             node.v.motor.left.target = left  
             node.v.motor.right.target = right   
         
@@ -78,7 +70,7 @@ class SeekerController:
                 return 100, -100
 
             #Detects grey area
-            elif (reflected_values[0] > 900) or (reflected_values[1] > 900):
+            elif (reflected_values[0] > 900) and (reflected_values[1] > 900):
                 led_state(node, [32, 8, 0]) # Turn orange
                 self.in_grey_area = True
                 return None
@@ -89,6 +81,9 @@ class SeekerController:
                 return None
 
         def run(attributes, node):
+            
+            MAX_AREA = 480*640
+            
             for i,weight in enumerate(attributes):
                 prox_values = node.v.prox.horizontal
                 
@@ -99,13 +94,17 @@ class SeekerController:
                 
                 weight = weight[0]
                 total_fitness = 0
+                
                 for _ in range(20):
+                    
                     hsv, image = take_picture(camera)
                     if image is not None:
                         
                         blue_area, blue_direction = get_image(hsv, image, np.array([110, 50, 50]), np.array([130, 255, 255]))
                         green_area, green_direction = get_image(hsv, image, np.array([35, 50, 50]), np.array([85, 255, 255]))
-
+                        blue_area = blue_area / MAX_AREA
+                        green_area = green_area / MAX_AREA
+                        
                         model = NN(5)
                         
                         input_weights = torch.tensor(weight, dtype=torch.float32).view(2, 5)
@@ -117,6 +116,9 @@ class SeekerController:
                             blue_direction = 0
                         if green_direction is None:
                             green_direction = 0
+                        
+                        blue_direction = blue_direction / 5
+                        green_direction = green_direction / 5
 
                         input_nodes = [blue_direction, blue_area, green_direction, green_area, -1]
 
@@ -140,7 +142,6 @@ class SeekerController:
 
                         total_fitness += fitness_function_seeker(self.speeds, blue_area, green_area) if detected_speeds is None else 0
                         
-                print(f"Fitness: {total_fitness}")
                 tmp = (self.all_weights[i][0], total_fitness)
                 self.all_weights[i] = tmp
 
@@ -148,7 +149,8 @@ class SeekerController:
             
             all_weights = []
             for _ in range(10):
-                weights = [random.randint(-5, 5) for _ in range(2*(5))]
+                weights = [random.randint(0, 5) for _ in range(2*(5))]
+                #weights = [random.uniform(0, 0.75) for _ in range(2*5)]
                 all_weights.append((weights, 0))
 
             return all_weights
@@ -334,7 +336,7 @@ class SeekerController:
                         
                         
                         message = node.v.prox.comm.rx
-                        #print(f"message from Thymio: {message}")
+
                         """
                         Get the value of the message received from the other Thymio
                         the value is 0 if no message has been received and 
@@ -345,7 +347,9 @@ class SeekerController:
                         if (sum(prox_values) > 20000): #or self.is_tagged:
                             camera.release()
                             cv2.destroyAllWindows()
-                            print("Weights: ", self.all_weights)
+                            with open("final_weights", "w") as file:
+                                for weight, fitness in self.all_weights:
+                                    file.write(f"Weights: {weight} Fitness: {fitness}\n")
                             break
 
                         node.flush()  # Send the set commands to the robot.
