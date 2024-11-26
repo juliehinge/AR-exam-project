@@ -72,6 +72,6 @@ def get_direction(img):
     return max_area_column
 
 def get_area(img):
-    area = get_color_area(img, (255, 0, 127))
+    area = get_color_area("detected_color.jpg", (255, 0, 127))
     return area
 
