@@ -80,7 +80,7 @@ class SeekerController:
                 self.in_grey_area = False
                 return None
 
-        def run(attributes, node):
+        def run(attributes, node, gen_n, file):
             
             MAX_AREA = 480*640
             
@@ -105,6 +105,7 @@ class SeekerController:
                         blue_area = blue_area / MAX_AREA
                         green_area = green_area / MAX_AREA
                         
+
                         model = NN(5)
                         
                         input_weights = torch.tensor(weight, dtype=torch.float32).view(2, 5)
@@ -144,6 +145,9 @@ class SeekerController:
                         
                 tmp = (self.all_weights[i][0], total_fitness)
                 self.all_weights[i] = tmp
+
+            for weight, fitness in self.all_weights:
+                file.write(f"Generation: {gen_n}, Weights: {weight}, Fitness: {fitness}\n")
 
         def generate_weights():
             
@@ -313,48 +317,48 @@ class SeekerController:
                     node.flush() #send the initial state to Thymio
 
                     self.all_weights = generate_weights()
-                    run(self.all_weights, node)
-
 
                     gen_n = 0
-                    MAX_GENERATIONS = 100
-                    
-                    initial_average_fitness = average_fitness(self.all_weights)
-                    convergence_threshold = 5
-
-                    while not population_converged(self.all_weights, convergence_threshold) or gen_n < MAX_GENERATIONS:
-
-                        gen_n += 1
-                        elite = elitism_selection(self.all_weights, 2)
-                        new_gen = crossover(self.all_weights, 4) + elite
-                        mutated = [mutation(weight) if weight not in elite else weight for weight in new_gen]
+                    with open("all_weights_seeker", "w") as file:
+                        run(self.all_weights, node, gen_n, file)
+                        MAX_GENERATIONS = 100
                         
-                        self.all_weights = mutated
+                        initial_average_fitness = average_fitness(self.all_weights)
+                        convergence_threshold = 5
+
+                        while not population_converged(self.all_weights, convergence_threshold) or gen_n < MAX_GENERATIONS:
+
+                            gen_n += 1
+                            elite = elitism_selection(self.all_weights, 2)
+                            new_gen = crossover(self.all_weights, 4) + elite
+                            mutated = [mutation(weight) if weight not in elite else weight for weight in new_gen]
+                            
+                            self.all_weights = mutated
 
 
-                        run(self.all_weights, node)
-                        
-                        
-                        message = node.v.prox.comm.rx
+                            run(self.all_weights, node, gen_n, file)
+                            
+                            
+                            message = node.v.prox.comm.rx
 
-                        """
-                        Get the value of the message received from the other Thymio
-                        the value is 0 if no message has been received and 
-                        gets set to a new value when a message is received" 
-                        """
-                        # if the robot is blocked or it has been tagged, the program should terminate
-                        prox_values = node.v.prox.horizontal
-                        if (sum(prox_values) > 20000): #or self.is_tagged:
-                            camera.release()
-                            cv2.destroyAllWindows()
-                            with open("final_weights", "w") as file:
-                                for weight, fitness in self.all_weights:
-                                    file.write(f"Weights: {weight} Fitness: {fitness}\n")
-                            break
+                            """
+                            Get the value of the message received from the other Thymio
+                            the value is 0 if no message has been received and 
+                            gets set to a new value when a message is received" 
+                            """
+                            # if the robot is blocked or it has been tagged, the program should terminate
+                            prox_values = node.v.prox.horizontal
+                            if (sum(prox_values) > 20000): #or self.is_tagged:
+                                camera.release()
+                                cv2.destroyAllWindows()
+                                with open("final_weights", "w") as file:
+                                    for weight, fitness in self.all_weights:
+                                        file.write(f"Weights: {weight} Fitness: {fitness}\n")
+                                break
 
-                        node.flush()  # Send the set commands to the robot.
+                            node.flush()  # Send the set commands to the robot.
 
-                        await client.sleep(0.3)  # Pause for 0.3 seconds before the next iteration.
+                            await client.sleep(0.3)  # Pause for 0.3 seconds before the next iteration.
 
                     # Once out of the loop, stop the robot and set the top LED to red.
                     print("Thymio stopped successfully!")

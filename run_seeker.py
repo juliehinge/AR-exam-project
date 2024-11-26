@@ -76,7 +76,6 @@ class SeekerController:
 
         # Running the Thymio robot
         def run_motor(node, left, right):
-            print(left, right)
             node.v.motor.left.target = left  
             node.v.motor.right.target = right   
         
@@ -152,7 +151,7 @@ class SeekerController:
                     detected_speeds = area_detection(reflected_values, node)
                     
                     self.speeds = detected_speeds if detected_speeds is not None else (left_motor_speed, right_motor_speed)
-                    run_motor(node, int(self.speeds[0]), int(self.speeds[1]))
+                    #run_motor(node, int(self.speeds[0]), int(self.speeds[1]))
                     
                     node.flush()
 

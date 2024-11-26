@@ -150,7 +150,7 @@ def fitness_function_avoider(motor_speeds, in_grey_area, reload_grey, red_area, 
     left_motor, right_motor = motor_speeds
 
     # Define maximum values for normalization
-    MAX_MOTOR_SPEED_FORWARD = 700
+    MAX_MOTOR_SPEED_FORWARD = 600
     MAX_MOTOR_SPEED_BACKWORD = -600
    # MIN_SPEED = 0
     # Width times height of the image
@@ -169,22 +169,21 @@ def fitness_function_avoider(motor_speeds, in_grey_area, reload_grey, red_area, 
     # Normalize area
     normalized_red_area = red_area / MAX_AREA
     normalized_green_area = green_area / MAX_AREA
-
     if in_grey_area: # the robot is safe
         # Minimize motor speeds
-        fitness = MAX_FITNESS - normalized_speed
+        fitness = 1 - normalized_speed
     elif reload_grey: # got kicked out of the grey, run away
         # Minimize red area, and maximize speed
-        fitness = (1 - normalized_red_area) * normalized_speed * (1 - imbalance)
+        fitness = (1 - normalized_red_area*100000) * normalized_speed * (1 - imbalance)
     else:
         if normalized_green_area != 0 and normalized_red_area != 0:     # sees both green and red, run away from red
-            fitness = (1 - normalized_red_area) * normalized_speed * (1 - imbalance)
+            fitness = (1 - normalized_red_area*1000000) + (1 - imbalance)
         elif normalized_green_area == 0 and normalized_red_area != 0:   # only sees red, run away
-            fitness = (1 - normalized_red_area) * normalized_speed * (1 - imbalance)
+            fitness = (1 - normalized_red_area*100000) + normalized_speed + (1 - imbalance)
         elif normalized_green_area != 0 and normalized_red_area == 0:   # only sees green, go to green
-            fitness = normalized_speed * normalized_green_area
+            fitness = normalized_speed + normalized_green_area
         else:                                                           # sees neither, run around
-            fitness = normalized_speed * (1 - imbalance)
+            fitness = normalized_speed + (1 - imbalance)
 
     return min(fitness, MAX_FITNESS)
 
@@ -196,8 +195,8 @@ def fitness_function_seeker(motor_speeds, blue_area, green_area):
     left_motor, right_motor = motor_speeds
     
     # Define maximum values for normalization
-    MAX_MOTOR_SPEED_FORWARD = 700
-    MAX_MOTOR_SPEED_BACKWORD = -600
+    MAX_MOTOR_SPEED_FORWARD = 500
+    
    # MIN_SPEED = 0
     # Width times height of the image
     MAX_AREA = 480*640
@@ -214,7 +213,7 @@ def fitness_function_seeker(motor_speeds, blue_area, green_area):
     # Normalize area
     normalized_blue_area = blue_area / MAX_AREA
 
-    fitness = normalized_blue_area * normalized_speed + (normalized_green_area) + ((1-normalized_imbalance))
+    fitness = normalized_blue_area + (normalized_speed * 0.2) + (normalized_green_area * 0.2) + ((1-normalized_imbalance) * 0.2)
 
     return min(fitness, MAX_FITNESS)
 

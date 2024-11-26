@@ -172,10 +172,10 @@ class AvoiderController:
                     if image is not None:
                         
                         red_area, red_direction = get_image(hsv, image, np.array([158, 36, 210]), np.array([180, 255, 255]))
-                        green_area, green_direction = get_image(hsv, image, np.array([0, 100, 0]), np.array([50, 255, 50]))
+                        green_area, green_direction = get_image(hsv, image, np.array([35, 50, 50]), np.array([85, 255, 255]))
                         red_area = red_area / MAX_AREA
                         green_area = green_area / MAX_AREA
-                        
+
                         model = NN(7)
                         
                         input_weights = torch.tensor(weight, dtype=torch.float32).view(2, 7)
@@ -401,14 +401,12 @@ class AvoiderController:
                         convergence_threshold = 5
 
                         while not population_converged(self.all_weights, convergence_threshold) or gen_n < MAX_GENERATIONS:
-
                             gen_n += 1
                             elite = elitism_selection(self.all_weights, 2)
                             new_gen = crossover(self.all_weights, 4) + elite
                             mutated = [mutation(weight) if weight not in elite else weight for weight in new_gen]
                             
                             self.all_weights = mutated
-
 
                             run(self.all_weights, node, gen_n, file)
 
