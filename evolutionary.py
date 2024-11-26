@@ -11,15 +11,16 @@ import torch.nn as nn
 
 class NN(nn.Module):
     # Input: direction(red), area (red), direction(green), area (green), in(grey) (boolean), grey_reload, -1
-    def __init__(self, input_size=7):
+    def __init__(self, input_size):
         super(NN, self).__init__()
         # Output: left_motor_speed, right_motor_speed
         self.fc = nn.Linear(input_size, 2)
 
     def forward(self, x):
         x = self.fc(x)
-        x = torch.relu(x)
+        x = torch.sigmoid(x)  # Normalize to [0, 1]
         return x
+
 
 
 def elitism_selection(robots, n):
@@ -141,7 +142,7 @@ def generate_random_robots(n):
     return robots
 
 
-def fitness_function(motor_speeds, in_grey_area, reload_grey, red_area, green_area):
+def fitness_function_avoider(motor_speeds, in_grey_area, reload_grey, red_area, green_area):
     ''' Normalized fitness function for the robot '''
     
     # TODO test if imbalance needs to be included
@@ -151,39 +152,69 @@ def fitness_function(motor_speeds, in_grey_area, reload_grey, red_area, green_ar
     # Define maximum values for normalization
     MAX_MOTOR_SPEED_FORWARD = 700
     MAX_MOTOR_SPEED_BACKWORD = -600
-    MIN_SPEED = 0
+   # MIN_SPEED = 0
     # Width times height of the image
     MAX_AREA = 480*640
     # Cap fitness to a maximum value to avoid large spikes
-    MAX_FITNESS = 1.0
+    MAX_FITNESS = 100.0
 
 
     # Calculate normalized speed (in range [0, 1])
     speed = abs((left_motor + right_motor) / 2)
-    normalized_speed = (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)
+    normalized_speed = (speed) / (MAX_MOTOR_SPEED_FORWARD )
 
     # Calculate normalized imbalance (delta_v)
-   # delta_v = abs(left_motor - right_motor) / max(left_motor + right_motor, 1)
-   # normalized_imbalance = math.sqrt(delta_v)  # Smoother scaling, already between 0 and 1
-
+    delta_v = abs(left_motor - right_motor) / max(left_motor + right_motor, 1)
+    imbalance = math.sqrt(delta_v)  # Smoother scaling, already between 0 and 1
     # Normalize area
     normalized_red_area = red_area / MAX_AREA
     normalized_green_area = green_area / MAX_AREA
 
-    if in_grey_area:
+    if in_grey_area: # the robot is safe
         # Minimize motor speeds
         fitness = MAX_FITNESS - normalized_speed
-    elif reload_grey:
+    elif reload_grey: # got kicked out of the grey, run away
         # Minimize red area, and maximize speed
-        fitness = (1 - normalized_red_area) * normalized_speed
+        fitness = (1 - normalized_red_area) * normalized_speed * (1 - imbalance)
     else:
-        if normalized_green_area != 0 and normalized_red_area != 0:
-            fitness = (1 - normalized_red_area) * normalized_speed
-        else:    
-            fitness = (1 - normalized_red_area) * normalized_green_area
-  
-    # Include imbalance
-    #fitness = fitness - normalized_imbalance * 0.1  
+        if normalized_green_area != 0 and normalized_red_area != 0:     # sees both green and red, run away from red
+            fitness = (1 - normalized_red_area) * normalized_speed * (1 - imbalance)
+        elif normalized_green_area == 0 and normalized_red_area != 0:   # only sees red, run away
+            fitness = (1 - normalized_red_area) * normalized_speed * (1 - imbalance)
+        elif normalized_green_area != 0 and normalized_red_area == 0:   # only sees green, go to green
+            fitness = normalized_speed * normalized_green_area
+        else:                                                           # sees neither, run around
+            fitness = normalized_speed * (1 - imbalance)
+
+    return min(fitness, MAX_FITNESS)
+
+def fitness_function_seeker(motor_speeds, blue_area, green_area):
+    ''' Normalized fitness function for the robot '''
+    
+    # TODO test if imbalance needs to be included
+
+    left_motor, right_motor = motor_speeds
+    
+    # Define maximum values for normalization
+    MAX_MOTOR_SPEED_FORWARD = 700
+    MAX_MOTOR_SPEED_BACKWORD = -600
+   # MIN_SPEED = 0
+    # Width times height of the image
+    MAX_AREA = 480*640
+    # Cap fitness to a maximum value to avoid large spikes
+    MAX_FITNESS = 100.0
+    normalized_blue_area = blue_area / MAX_AREA
+    normalized_green_area = green_area / MAX_AREA
+    # Calculate normalized speed (in range [0, 1])
+    speed = abs((left_motor + right_motor) / 2)
+    normalized_speed = (speed) / (MAX_MOTOR_SPEED_FORWARD )
+    delta_v = abs(left_motor - right_motor) / max(left_motor + right_motor, 1)
+    normalized_imbalance = math.sqrt(delta_v)  # Smoother scaling, already between 0 and 1
+
+    # Normalize area
+    normalized_blue_area = blue_area / MAX_AREA
+
+    fitness = normalized_blue_area * normalized_speed + (normalized_green_area) + ((1-normalized_imbalance))
 
     return min(fitness, MAX_FITNESS)
 
