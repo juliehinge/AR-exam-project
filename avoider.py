@@ -146,20 +146,19 @@ class AvoiderController:
                 self.in_grey_area = False
                 return None
 
-        def run(attributes, node, gen_n):
-            #with open("final_weights", "w") as file:
-            #    file.write(f"GENERATION {gen_n}")
+        def run(attributes, node, gen_n, file):
             
             MAX_AREA = 480*640
+
             
             for i,weight in enumerate(attributes):
-                
                 prox_values = node.v.prox.horizontal
                 message = node.v.prox.comm.rx
-                if message == "1":
-                    self.is_tagged = true
+                if message == 1:
+                    self.is_tagged = True
+                    break
                 
-                if (sum(prox_values) > 20000) or self.is_tagged:
+                if (sum(prox_values) > 20000):
                     camera.release()
                     cv2.destroyAllWindows()
                     break
@@ -215,13 +214,12 @@ class AvoiderController:
 
                         total_fitness += fitness_function_avoider(self.speeds, self.in_grey_area, self.reload_grey, red_area, green_area) if detected_speeds is None else 0
                         
-                print(f"Total fitness: {total_fitness}")
+                #print(f"Total fitness: {total_fitness}")
                 tmp = (self.all_weights[i][0], total_fitness)
                 self.all_weights[i] = tmp
-            
-            #with open("final_weights", "w") as file:
-            #    for weight, fitness in self.all_weights:
-            #        file.write(f"Weights: {weight} Fitness: {fitness}\n")
+                
+            for weight, fitness in self.all_weights:
+                file.write(f"Generation: {gen_n}, Weights: {weight}, Fitness: {fitness}\n")
             
 
         def generate_weights():
@@ -384,7 +382,6 @@ class AvoiderController:
                     
 
                     self.speeds = node.v.motor.left.target, node.v.motor.right.target
-
                     
                     # Set time interval on 200ms
                     node.v.timer.period[0] = 10000
@@ -394,43 +391,46 @@ class AvoiderController:
 
                     gen_n = 0
                     self.all_weights = generate_weights()
-                    run(self.all_weights, node, gen_n)
-                    MAX_GENERATIONS = 100
-                    
+                    with open("all_weights_avioder", "w") as file:
 
-                    initial_average_fitness = average_fitness(self.all_weights)
-                    convergence_threshold = 5
-
-                    while not population_converged(self.all_weights, convergence_threshold) or gen_n < MAX_GENERATIONS:
-
-                        gen_n += 1
-                        elite = elitism_selection(self.all_weights, 2)
-                        new_gen = crossover(self.all_weights, 4) + elite
-                        mutated = [mutation(weight) if weight not in elite else weight for weight in new_gen]
+                        run(self.all_weights, node, gen_n, file)
+                        MAX_GENERATIONS = 100
                         
-                        self.all_weights = mutated
+
+                        initial_average_fitness = average_fitness(self.all_weights)
+                        convergence_threshold = 5
+
+                        while not population_converged(self.all_weights, convergence_threshold) or gen_n < MAX_GENERATIONS:
+
+                            gen_n += 1
+                            elite = elitism_selection(self.all_weights, 2)
+                            new_gen = crossover(self.all_weights, 4) + elite
+                            mutated = [mutation(weight) if weight not in elite else weight for weight in new_gen]
+                            
+                            self.all_weights = mutated
 
 
-                        run(self.all_weights, node, gen_n)
+                            run(self.all_weights, node, gen_n, file)
 
-                        """
-                        Get the value of the message received from the other Thymio
-                        the value is 0 if no message has been received and 
-                        gets set to a new value when a message is received" 
-                        """
-                        prox_values = node.v.prox.horizontal
-                        if (sum(prox_values) > 20000) or self.is_tagged:
-                            camera.release()
-                            cv2.destroyAllWindows()
-                            with open("final_weights_avoider.txt", "w") as file:
-                                file.write("FINAL GENERATION")
-                                for weight, fitness in self.all_weights:
-                                    file.write(f"Weights: {weight} Fitness: {fitness}\n")
-                            break
+                            """
+                            Get the value of the message received from the other Thymio
+                            the value is 0 if no message has been received and 
+                            gets set to a new value when a message is received" 
+                            """
+                            prox_values = node.v.prox.horizontal
+                            if (sum(prox_values) > 20000) or self.is_tagged:
+                                camera.release()
+                                cv2.destroyAllWindows()
+                                #with open("final_weights_avoider.txt", "w") as file:
+                                #    file.write("FINAL GENERATION")
+                                #    for weight, fitness in self.all_weights:
+                                #        file.write(f"Weights: {weight} Fitness: {fitness}\n")
+                                led_state(node, [32, 0, 32])
+                                break
 
-                        node.flush()  # Send the set commands to the robot.
+                            node.flush()  # Send the set commands to the robot.
 
-                        await client.sleep(0.3)  # Pause for 0.3 seconds before the next iteration.
+                            await client.sleep(0.3)  # Pause for 0.3 seconds before the next iteration.
 
                     # Once out of the loop, stop the robot and set the top LED to red.
                     print("Thymio stopped successfully!")
