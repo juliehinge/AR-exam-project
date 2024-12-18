@@ -1,9 +1,5 @@
 
 
-# TODO correct color scheme
-# TODO correct the reflection vales
-# TODO Grey area has to ignore a 1 message
-
 from tdmclient import ClientAsync
 import time
 from image_detection import *
